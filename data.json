@@ -1,0 +1,22 @@
+{
+  "lastUpdated": "April 7, 2025",
+  "totalSales": 45805,
+  "platforms": {
+    "amazon": {
+      "us": 28196,
+      "ca": 1455,
+      "uk": 660,
+      "total": 30311
+    },
+    "shopify": {
+      "physical": 1255,
+      "digital": 283,
+      "total": 1538
+    },
+    "clickfunnels": {
+      "physical": 10033,
+      "digital": 5461,
+      "total": 15494
+    }
+  }
+}
