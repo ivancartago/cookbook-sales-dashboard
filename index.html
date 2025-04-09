@@ -8,6 +8,8 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <!-- Chart.js for visualizations -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- PapaParse for CSV parsing -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
   <style>
     .chart-container {
       position: relative;
@@ -90,188 +92,245 @@
     
     <div class="text-center mt-4 mb-4 text-muted">
       <p>Last updated: <span id="lastUpdated">Loading...</span></p>
-      <p>To update this dashboard, edit the data.json file in your GitHub repository.</p>
+      <p>Dashboard is connected to Google Sheets. Updates in the sheet will reflect here automatically.</p>
     </div>
   </div>
 
   <script>
+    // REPLACE THIS URL with your Google Sheet published CSV URL
+    const googleSheetUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQWR8lkiXZN79AFM78lkX__UJxF0EE-xaxDpoWI2_g_X1W9e_lBVU4xr3ulJBTc1qpyGcp7LQHJNEL6/pub?output=csv';
+    
     // Format numbers with commas
     function formatNumber(num) {
       return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
     }
     
+    // Parse Google Sheet data into our data structure
+    function parseSheetData(results) {
+      const rows = results.data;
+      
+      // Create an object from the CSV rows
+      const data = {};
+      for (const row of rows) {
+        if (row.length >= 2) {
+          const key = row[0];
+          const value = row[1];
+          
+          // Try to convert to number if possible
+          data[key] = isNaN(value) ? value : Number(value);
+        }
+      }
+      
+      // Convert to our data structure
+      return {
+        lastUpdated: data.lastUpdated || "Unknown",
+        totalSales: data.totalSales || 0,
+        platforms: {
+          amazon: {
+            us: data.amazonUS || 0,
+            ca: data.amazonCA || 0,
+            uk: data.amazonUK || 0,
+            total: data.amazonTotal || 0
+          },
+          shopify: {
+            physical: data.shopifyPhysical || 0,
+            digital: data.shopifyDigital || 0,
+            total: data.shopifyTotal || 0
+          },
+          clickfunnels: {
+            physical: data.clickfunnelsPhysical || 0,
+            digital: data.clickfunnelsDigital || 0,
+            total: data.clickfunnelsTotal || 0
+          }
+        }
+      };
+    }
+    
     // Fetch and process data
     async function loadDashboard() {
       try {
-        const response = await fetch('data.json');
-        if (!response.ok) {
-          throw new Error('Failed to load data.json');
-        }
-        const data = await response.json();
-        
-        // Update last updated text
-        document.getElementById('lastUpdated').textContent = data.lastUpdated;
-        
-        // Update total sales
-        document.getElementById('totalSales').querySelector('.stats-value').textContent = formatNumber(data.totalSales);
-        
-        // Update platform totals and percentages
-        const amazonTotal = data.platforms.amazon.total;
-        const shopifyTotal = data.platforms.shopify.total;
-        const clickfunnelsTotal = data.platforms.clickfunnels.total;
-        
-        document.getElementById('amazonTotal').textContent = formatNumber(amazonTotal);
-        document.getElementById('shopifyTotal').textContent = formatNumber(shopifyTotal);
-        document.getElementById('clickfunnelsTotal').textContent = formatNumber(clickfunnelsTotal);
-        
-        const amazonPercentage = ((amazonTotal / data.totalSales) * 100).toFixed(1);
-        const shopifyPercentage = ((shopifyTotal / data.totalSales) * 100).toFixed(1);
-        const clickfunnelsPercentage = ((clickfunnelsTotal / data.totalSales) * 100).toFixed(1);
-        
-        document.getElementById('amazonPercentage').textContent = amazonPercentage + '% of total sales';
-        document.getElementById('shopifyPercentage').textContent = shopifyPercentage + '% of total sales';
-        document.getElementById('clickfunnelsPercentage').textContent = clickfunnelsPercentage + '% of total sales';
-        
-        // Create Sales by Channel chart
-        const channelLabels = ['Amazon US', 'Amazon CA', 'Amazon UK', 'Shopify Physical', 
-                             'Shopify Digital', 'ClickFunnels Physical', 'ClickFunnels Digital'];
-        const channelData = [
-          data.platforms.amazon.us,
-          data.platforms.amazon.ca,
-          data.platforms.amazon.uk,
-          data.platforms.shopify.physical,
-          data.platforms.shopify.digital,
-          data.platforms.clickfunnels.physical,
-          data.platforms.clickfunnels.digital
-        ];
-        
-        const channelColors = [
-          '#FF9900', '#FF9900', '#FF9900',
-          '#96BF48', '#5E8E3E',
-          '#3083DC', '#2563EB'
-        ];
-        
-        new Chart(document.getElementById('salesByChannelChart'), {
-          type: 'bar',
-          data: {
-            labels: channelLabels,
-            datasets: [{
-              label: 'Cookbooks Sold',
-              data: channelData,
-              backgroundColor: channelColors
-            }]
+        // Use PapaParse to fetch and parse the CSV
+        Papa.parse(googleSheetUrl, {
+          download: true,
+          header: false,
+          complete: function(results) {
+            const data = parseSheetData(results);
+            updateDashboard(data);
           },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-              title: {
-                display: true,
-                text: 'Sales by Channel',
-                font: { size: 16 }
-              }
-            },
-            scales: {
-              y: {
-                beginAtZero: true,
-                title: {
-                  display: true,
-                  text: 'Cookbooks Sold'
-                }
-              }
-            }
+          error: function(error) {
+            console.error('Error parsing CSV:', error);
+            showError('Failed to load data from Google Sheets. Check console for details.');
           }
         });
-        
-        // Create Platform Distribution chart
-        const platformLabels = ['Amazon', 'Shopify', 'ClickFunnels'];
-        const platformData = [amazonTotal, shopifyTotal, clickfunnelsTotal];
-        const platformColors = ['#FF9900', '#96BF48', '#3083DC'];
-        
-        new Chart(document.getElementById('platformDistributionChart'), {
-          type: 'doughnut',
-          data: {
-            labels: platformLabels,
-            datasets: [{
-              data: platformData,
-              backgroundColor: platformColors
-            }]
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-              title: {
-                display: true,
-                text: 'Sales Distribution by Platform',
-                font: { size: 16 }
-              },
-              tooltip: {
-                callbacks: {
-                  label: function(context) {
-                    const value = context.raw;
-                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
-                    const percentage = ((value / total) * 100).toFixed(1);
-                    return `${context.label}: ${formatNumber(value)} (${percentage}%)`;
-                  }
-                }
-              }
-            }
-          }
-        });
-        
-        // Create Physical vs Digital chart
-        new Chart(document.getElementById('physicalVsDigitalChart'), {
-          type: 'bar',
-          data: {
-            labels: ['Physical', 'Digital'],
-            datasets: [
-              {
-                label: 'Shopify',
-                data: [data.platforms.shopify.physical, data.platforms.shopify.digital],
-                backgroundColor: '#96BF48'
-              },
-              {
-                label: 'ClickFunnels',
-                data: [data.platforms.clickfunnels.physical, data.platforms.clickfunnels.digital],
-                backgroundColor: '#3083DC'
-              }
-            ]
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-              title: {
-                display: true,
-                text: 'Physical vs Digital Sales',
-                font: { size: 16 }
-              }
-            },
-            scales: {
-              y: {
-                beginAtZero: true,
-                title: {
-                  display: true,
-                  text: 'Cookbooks Sold'
-                }
-              }
-            }
-          }
-        });
-        
       } catch (error) {
         console.error('Error loading dashboard:', error);
-        document.body.innerHTML += `
-          <div class="container">
-            <div class="alert alert-danger mt-4">
-              <h4>Error Loading Dashboard</h4>
-              <p>${error.message}</p>
-              <p>Make sure your data.json file exists and is valid JSON.</p>
-            </div>
-          </div>
-        `;
+        showError('Error loading dashboard: ' + error.message);
       }
+    }
+    
+    function showError(message) {
+      document.body.innerHTML += `
+        <div class="container">
+          <div class="alert alert-danger mt-4">
+            <h4>Error Loading Dashboard</h4>
+            <p>${message}</p>
+            <p>Make sure your Google Sheet is properly published and accessible.</p>
+          </div>
+        </div>
+      `;
+    }
+    
+    function updateDashboard(data) {
+      // Update last updated text
+      document.getElementById('lastUpdated').textContent = data.lastUpdated;
+      
+      // Update total sales
+      document.getElementById('totalSales').querySelector('.stats-value').textContent = formatNumber(data.totalSales);
+      
+      // Update platform totals and percentages
+      const amazonTotal = data.platforms.amazon.total;
+      const shopifyTotal = data.platforms.shopify.total;
+      const clickfunnelsTotal = data.platforms.clickfunnels.total;
+      
+      document.getElementById('amazonTotal').textContent = formatNumber(amazonTotal);
+      document.getElementById('shopifyTotal').textContent = formatNumber(shopifyTotal);
+      document.getElementById('clickfunnelsTotal').textContent = formatNumber(clickfunnelsTotal);
+      
+      const amazonPercentage = ((amazonTotal / data.totalSales) * 100).toFixed(1);
+      const shopifyPercentage = ((shopifyTotal / data.totalSales) * 100).toFixed(1);
+      const clickfunnelsPercentage = ((clickfunnelsTotal / data.totalSales) * 100).toFixed(1);
+      
+      document.getElementById('amazonPercentage').textContent = amazonPercentage + '% of total sales';
+      document.getElementById('shopifyPercentage').textContent = shopifyPercentage + '% of total sales';
+      document.getElementById('clickfunnelsPercentage').textContent = clickfunnelsPercentage + '% of total sales';
+      
+      // Create Sales by Channel chart
+      const channelLabels = ['Amazon US', 'Amazon CA', 'Amazon UK', 'Shopify Physical', 
+                           'Shopify Digital', 'ClickFunnels Physical', 'ClickFunnels Digital'];
+      const channelData = [
+        data.platforms.amazon.us,
+        data.platforms.amazon.ca,
+        data.platforms.amazon.uk,
+        data.platforms.shopify.physical,
+        data.platforms.shopify.digital,
+        data.platforms.clickfunnels.physical,
+        data.platforms.clickfunnels.digital
+      ];
+      
+      const channelColors = [
+        '#FF9900', '#FF9900', '#FF9900',
+        '#96BF48', '#5E8E3E',
+        '#3083DC', '#2563EB'
+      ];
+      
+      new Chart(document.getElementById('salesByChannelChart'), {
+        type: 'bar',
+        data: {
+          labels: channelLabels,
+          datasets: [{
+            label: 'Cookbooks Sold',
+            data: channelData,
+            backgroundColor: channelColors
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            title: {
+              display: true,
+              text: 'Sales by Channel',
+              font: { size: 16 }
+            }
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              title: {
+                display: true,
+                text: 'Cookbooks Sold'
+              }
+            }
+          }
+        }
+      });
+      
+      // Create Platform Distribution chart
+      const platformLabels = ['Amazon', 'Shopify', 'ClickFunnels'];
+      const platformData = [amazonTotal, shopifyTotal, clickfunnelsTotal];
+      const platformColors = ['#FF9900', '#96BF48', '#3083DC'];
+      
+      new Chart(document.getElementById('platformDistributionChart'), {
+        type: 'doughnut',
+        data: {
+          labels: platformLabels,
+          datasets: [{
+            data: platformData,
+            backgroundColor: platformColors
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            title: {
+              display: true,
+              text: 'Sales Distribution by Platform',
+              font: { size: 16 }
+            },
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  const value = context.raw;
+                  const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                  const percentage = ((value / total) * 100).toFixed(1);
+                  return `${context.label}: ${formatNumber(value)} (${percentage}%)`;
+                }
+              }
+            }
+          }
+        }
+      });
+      
+      // Create Physical vs Digital chart
+      new Chart(document.getElementById('physicalVsDigitalChart'), {
+        type: 'bar',
+        data: {
+          labels: ['Physical', 'Digital'],
+          datasets: [
+            {
+              label: 'Shopify',
+              data: [data.platforms.shopify.physical, data.platforms.shopify.digital],
+              backgroundColor: '#96BF48'
+            },
+            {
+              label: 'ClickFunnels',
+              data: [data.platforms.clickfunnels.physical, data.platforms.clickfunnels.digital],
+              backgroundColor: '#3083DC'
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            title: {
+              display: true,
+              text: 'Physical vs Digital Sales',
+              font: { size: 16 }
+            }
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              title: {
+                display: true,
+                text: 'Cookbooks Sold'
+              }
+            }
+          }
+        }
+      });
     }
     
     // Load dashboard when page is ready
